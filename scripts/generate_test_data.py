@@ -37,24 +37,53 @@ def connect_to_cassandra():
 def generate_test_data(session):
     """
     Generate test data in Cassandra.
-    
-    Students should implement this function to generate test data based on their schema design.
-    The function should create:
-    - Users (with IDs 1-NUM_USERS)
-    - Conversations between random pairs of users
-    - Messages in each conversation with realistic timestamps
     """
     logger.info("Generating test data...")
-    
-    # TODO: Students should implement the test data generation logic
-    # Hint:
-    # 1. Create a set of user IDs
-    # 2. Create conversations between random pairs of users
-    # 3. For each conversation, generate a random number of messages
-    # 4. Update relevant tables to maintain data consistency
-    
-    logger.info(f"Generated {NUM_CONVERSATIONS} conversations with messages")
-    logger.info(f"User IDs range from 1 to {NUM_USERS}")
+    user_ids = list(range(1, 11))
+    conversation_ids = []
+    now = datetime.utcnow()
+    # Generate 15 unique random pairs for conversations
+    pairs = set()
+    while len(pairs) < 15:
+        u1, u2 = random.sample(user_ids, 2)
+        pair = tuple(sorted((u1, u2)))
+        pairs.add(pair)
+    for user1_id, user2_id in pairs:
+        # Create a unique conversation_id
+        conversation_id = int(now.timestamp() * 1000) + random.randint(0, 99999)
+        conversation_ids.append(conversation_id)
+        # Generate messages
+        num_messages = random.randint(5, 20)
+        messages = []
+        last_message_at = now
+        for i in range(num_messages):
+            sender_id = user1_id if i % 2 == 0 else user2_id
+            receiver_id = user2_id if i % 2 == 0 else user1_id
+            created_at = now - timedelta(minutes=num_messages - i)
+            content = f"Test message {i+1} from {sender_id} to {receiver_id}"
+            message_id = uuid.uuid4()
+            messages.append((conversation_id, created_at, message_id, sender_id, receiver_id, content))
+            last_message_at = created_at
+        # Insert messages
+        for m in messages:
+            session.execute('''
+                INSERT INTO messages (conversation_id, created_at, message_id, sender_id, receiver_id, content)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', m)
+        # Insert conversation
+        session.execute('''
+            INSERT INTO conversations (conversation_id, user1_id, user2_id, last_message_at, last_message_content)
+            VALUES (%s, %s, %s, %s, %s)
+        ''', (conversation_id, user1_id, user2_id, last_message_at, messages[-1][5]))
+        # Insert user_conversations for both users
+        for uid, oid in [(user1_id, user2_id), (user2_id, user1_id)]:
+            session.execute('''
+                INSERT INTO user_conversations (user_id, conversation_id, other_user_id, last_message_at, last_message_content)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (uid, conversation_id, oid, last_message_at, messages[-1][5]))
+    logger.info(f"Generated {len(conversation_ids)} conversations with messages")
+    logger.info(f"User IDs: {user_ids}")
+    logger.info(f"Conversation IDs: {conversation_ids}")
     logger.info("Use these IDs for testing the API endpoints")
 
 def main():
